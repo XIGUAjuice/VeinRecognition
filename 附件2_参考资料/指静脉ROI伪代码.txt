@@ -1,0 +1,150 @@
+这份伪代码是为了说明手指ROI（region of interest，感兴趣区域）截取的步骤，大家可以以此为流程写出自己的ROI截取代码。
+本伪代码是在python程序基础上修改的。
+Note：因为这是伪代码，所以是不可以直接运行的！除此之外，同学们在自己写代码的时候也要考虑
+    数组越界，截取ROI的区域超出图片边界，或者得到的ROI面积为零导致报错的情况，这些都要自己在实际写程序和调试中一点点修改。
+
+
+def get_edge(original_Img):       # 边缘提取
+'''
+    这个函数是对原始图片进行边缘提取的操作，输入原始指静脉图片，返回只保留指静脉上下边缘的二值化图像以及指静脉上下边缘的坐标值，这个函数里面也包含了其他的辅助函数
+    *Input : the original finger vein image
+    *Output : the binary edges image of finger vein and the coordinate of the up and down edges
+'''
+      FingerveinImg = bilteralFilter(original_Img)
+      edge_y = Sobel(FingerveinImg)      
+      edge_y = convertScaleAbs(edge_y)
+      edges = Canny(edge_y)
+      Fingervein_Img = mophologyEx(edges, kernel=MORPH_CLOSE)
+      
+      # 去除伪边缘
+      binary_Img = threshold(Fingervein_Img, type=THRESH_OTSU)
+      height= binary_Img.shape[0]
+      width = binary_Img.shape[1]
+      for j in range(width):
+            for up_i in range(int(height/2)-1, 0, -1):
+                  if binary_Img[up_i, j] == 255:
+                        up_row.append([up_i, j])
+                        for k in range(i-1, 0, -1):
+                              binary_Img[k , j] =0
+
+             for down_i in range(int(height/2)-1, 0, -1):
+                  if binary_Img[down_i, j] == 255:
+                        up_row.append([dwon_i, j])
+                        for k in range(i-1, height, -1):
+                              binary_Img[k , j] =0
+      
+       return binary_Img, up_row, down_row
+
+
+def get_center_line(binary_Img, up_row, down_row):     # 获取图像中心线
+'''
+    这个函数值是根据检测出的图像上下边缘的坐标值获取图像中心线并对中心线进行直线拟合
+    *Input :  the binary edges image of finger vein and the coordinate of the up and down edges
+    *Output : the scope and the intercept of the center line
+'''
+       center = (up_row + down_row)/2
+       output = fitLine(center, dist_Type=DIST_L2)
+       k = output[1]/output[0]
+       b = output[3]-k*output[2]
+       return k, b
+
+
+def rotate_correction(original_Img, slope):    # 对原始指静脉图像进行旋转校正
+'''
+    这个函数值是根据求得的指静脉中心线的斜率，对指静脉进行旋转校正
+    *Input :  the scope of the center line and the original finger vein image
+    *Output : the finger vein image after rotation
+'''
+       angle= np.arctan(slope)
+       height, width = original_Img.shape[ :2]
+       mat_Rotation = getRotationMatrix2D(center=(width/2, height/2), angle = angle)
+       height_New = int(width * fabs(sin(degree)) + height * fabs(cos(degree)))
+       width_New = int(height * fabs(sin(radians(degree))) + width * fabs(cos(radians(degree))))
+       Img_Rotation= warpAffine(original_Img, mat_Rotation, dsize=(width_New, height_New))
+       return Img_Rotation
+
+
+def tangent(Img_Rotation, up_row, down_row, scope, intercept, angle):
+'''
+    这个函数值对原始指静脉图像进行内切直线的寻找，并在旋转校正的图像进行上进行内切图像的获取
+    *Input :  the scope , intercept and the angle of the center line and the finger vein image after rotation
+    *Output : the internally tangent finger vein image
+'''    
+       d = 1000
+       for x1, y1 in range(up_row):
+              distance = fabs(scope*x1 - y1 + intercept)/(pow(scope, 2)+1)
+              if distance < d:
+                   d = distance
+                   cut_up = [x1, y1]
+
+       d = 1000
+       for x2, y2 in range(down_row):
+              distance = fabs(scope*x2 - y2 + intercept)/(pow(scope, 2)+1)
+              if distance < d:
+                   d = distance
+                   cut_down = [x2, y2]
+       
+       # 寻找
+       height, width = original_Img.shape[ :2]
+       center = [int(height/2), int(width/2)]
+       x1 = cut_up[0] - center[0]
+       y1 = cut_up[1] - center[1]
+       x2 = cut_down[0] - center[0]
+       y2 = cut_down[1] - center[1]
+       cut_up_coordinate = int(y1 * fabs(sin(angle)) + x1 * fabs(cos(angle))) + center[0]
+       cut_down_coordinate = int(y1 * fabs(sin(angle)) + x1 * fabs(cos(angle))) + center[0]
+       tangent_Img = Img_Rotation[cut_up_coordinate:cut_down_coordinate, : ]
+
+       return tangent_Img 
+
+
+def joint_position(tangent_Img):     # 关节位置确定
+'''
+    利用滑动窗口法，寻找灰度值最大的两个关节位置进行截取，最终在内切指静脉图像上进行ROI区域的截取
+    *Input :  the internally tangent finger vein image
+    *Output : ROI image
+'''    
+       windows_value = []
+       coordinate = []
+       for col in range(10, tangent_Img.shape[1]-10):
+              pixel_sum_value = 0
+              for j in range(col-10, col+11):
+                     for i in range(0, tangent_Img.shape[0]):
+                            pixel_sum_value += tangent[i, j]
+       windows_value.append(pixel_sum_value)
+       coordinate.append(col)
+
+       peak = []
+       pin = []
+       for i in range(1, len(windows_value)-1):
+              if windows_value[i] > (windows_value[i-1]) & windows_value[i] > windows_value[i+1]):
+                     peak.append(windows_value[i])
+                     pin.appendcoordinate([i])
+
+       max_peak= []
+       max_pin= []
+
+       max_peak.append(max(peak))
+       max_pin.append(pin[peak.index(max(peak))])
+
+       peak[peak.index(max(peak))] = 0
+
+       while 1:
+               if abs(pin[peak.index(max(peak))] - max_pin[0]) > 100:
+               max_peak.append(max(peak))
+               max_pin.append(pin[peak.index(max(peak))])
+               break
+       else:
+               peak[peak.index(max(peak))] = 0
+
+       ROI_Img = tangent_Img[ :, max_pin[0]:max_pin[1]]
+
+       return ROI_Img
+
+
+binary_Img, up_row, down_row = get_edge(original_Img)
+k, b = get_center_line(binary_Img, up_row, down_row)
+Img_Rotation = rotate_correction(original_Img, k)
+tangent_Img = tangent(Img_Rotation, up_row, down_row, k, b, angle)
+ROI_Img =  joint_position(tangent_Img)
+

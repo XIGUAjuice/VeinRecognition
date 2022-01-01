@@ -1,0 +1,2 @@
+配置OPENCV环境，搭建工程后在main函数中调用matchLBP.cpp中的matchLBP函数。
+注意包含上该包含的头文件。

@@ -1,0 +1,80 @@
+这份代码是介绍指静脉与掌静脉常用的增强方法，以及通用的图像增强方法
+
+//**************gabor增强方法********************
+关于gabor增强的介绍：
+https://my.oschina.net/u/4285472/blog/3210562
+
+python程序：
+# main函数
+gabor_filters = img_preprocess.build_Gaborfilter()  # 构建gabor滤波器  
+gabor_img = img_preprocess.Gabor_process(original_Image,gabor_filters) #Gabor增强原图像
+
+# 构建gabor滤波器        
+def build_Gaborfilter():
+    filters = []
+    ksize = [7,9] # gabor尺度
+#  ksigma = [100,50]
+#  lamda = np.pi/4.0         # 波长
+    lamda = 20
+    for k in range(len(ksize)): # 0
+        for theta in np.arange(0, np.pi, np.pi / 8): #gabor方向
+            kern = cv.getGaborKernel((ksize[k],ksize[k]), 100, theta, lamda, 1, 0, ktype=cv.CV_32F)
+            kern /= 1.5*kern.sum()
+            filters.append(kern) # 8个filter
+    plt.figure(1)
+
+    #用于绘制滤波器
+    for temp in range(len(filters)):   #(0,7)
+        plt.subplot(4, 4, temp + 1)
+        plt.imshow(filters[temp])
+    plt.show()
+    return filters
+
+#Gabor增强
+def Gabor_process(img,filters):     #gray img
+    res = [] #滤波结果
+    for i in range(len(filters)): # temp (0,7)`
+        # res1 = process(img, filters[i])
+        accum = np.zeros_like(img)
+        for kern in filters[i]:
+            fimg = cv.filter2D(img, cv.CV_8UC1, kern)
+            accum = np.maximum(accum, fimg, accum)
+        res.append(np.array(accum)) # the result img, the size of the res is the same as img
+
+    #用于绘制滤波效果
+    img2 = np.zeros_like(img)
+    img3 = np.zeros_like(img)
+
+    plt.figure(2)
+    for temp in range(len(res)):    # temp:(0,7)
+        plt.subplot(4,4,temp+1)
+        plt.imshow(res[temp], cmap='gray' )
+    plt.show()
+
+    h,w = img.shape[0:2]
+    for row in range(h):
+        for col in range(w):
+            res_pixel = []
+            res_pixel2 = []
+            for single_res in range(8):  # single res is an img in res   # (0,7)
+                res_pixel.append(res[single_res][row,col]) # append one pixel in each gabor_img
+                res_pixel2.append(res[single_res+8][row,col])
+    #         # print('res_pixel ',res_pixel)
+    #         # min_res_pixel = min(res_pixel)
+            max_res_pixel = max(res_pixel)
+            max_res_pixel2 = max(res_pixel2)
+    #         # medium_res_pixel = np.median(res_pixel)
+    #         # avg_res_pixel = np.mean(res_pixel)
+            
+            img2[row,col] = max_res_pixel
+            img3[row,col] = max_res_pixel2
+    # img2 = res[1]
+    result_img = []
+    result_img.append(img2)
+    result_img.append(img3)
+    return result_img  #返回滤波结果
+
+
+//**************通用图像增强方法********************
+介绍：
+https://www.cnblogs.com/polly333/p/7280764.html

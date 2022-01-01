@@ -1,0 +1,224 @@
+这份伪代码是为了说明手掌ROI（region of interest，感兴趣区域）截取的步骤，语法与C++相近，大家可以以此为流程写出自己的ROI截取代码。
+本伪代码是在python程序基础上修改的。
+Note：因为这是伪代码，所以是不可以直接运行的！是不可以直接运行的！是不可以直接运行的！除此之外，你们在自己写代码的时候也要考虑
+    数组越界，截取ROI的区域超出图片边界，或者得到的ROI面积为零导致报错的情况，这些都要自己在实际写程序和调试中一点点修改。
+
+Mat getRoiImg (Mat PalmveinImg)
+{
+    /**********说明************
+    这个函数是总的截取ROI的函数，输入原始手掌图片，返回手掌ROI图片，这个函数里面也包含了其他的辅助函数
+    *Input : the original PalmImage
+    *Output : the Palm ROI Image
+    **************************/
+
+    /********伪代码**********
+    PalmveinImg_gray = changeBGR2GRAY(PalmveinImg);
+    BackImg = Imageclone(PalmveinImg_gray);
+    BackImg = binary_process(BackImg, threshold=OTSU(BackImg));
+    Point* maxarea_point = new Point[10000];
+    int totalnum = 0;
+    getMaxRegion(BackImg, maxarea_point, totalnum);
+    int uprow, downrow;
+    for row = (1:BackImg.rows) do
+        if BackImg(row, BackImg.cols) == White then
+            uprow = row;
+            break;
+        end if
+    end for
+    for row = (BackImg.rows:1) do
+        if BackImg(row, BackImg.cols) == White then
+            downrow = row;
+            break;
+        end if
+    end for
+    Point centerpoint;
+    centerpoint.y = (uprow + downrow) / 2;
+    centerpoint.x = BackImg.cols;
+    Point* squarepoint = new Point[2];
+    Point* fingerpoint = new Point[9];
+    get_square_twopoints(maxarea_point, totalnum, centerpoint.x, centerpoint, squarepoint, fingerpoint);
+    Mat ROI_Palmvein = get_palm_ROI(PalmveinImg_gray, squarepoint);
+    ROI_Palmvein = changeGRAY2BGR(ROI_Palmvein);
+    return ROI_Palmvein;
+}
+
+int OTSU(Mat Image)
+{
+    /**********说明************
+    这个函数是获取一张Image，然后通过OTSU方法计算该Image二值化效果较好时的阈值
+    *Input : Image that needs to be binarized
+    *Output : the threshold
+    **************************/
+
+    由于OTSU方法在网上很容易找到，资料也很多，所以这里就不赘述了。
+}
+
+void getMaxRegion(BackImg, dstImg, maxarea_point, totalnum)
+{
+    /**********说明************
+    这个函数是根据二值化图片找出面积最大对应的轮廓点坐标
+    *Input : binary Image, the return Image, maxarea_point, the totalnum of the maxarea_point
+    *Output : None
+    **************************/
+
+    /********伪代码**********
+    vector<vector<Point>> contours;
+    findcontours(BackImg, contours);
+    Mat tempImg = Imageclone(BackImg);
+    tempImg.Scalar::all(0);
+    int area = 0; int max_area = 100;
+    for i = 1:contours.size() do
+        area = contours_area(contours[i]);
+        if area > max_area then
+            max_area = area;
+        end if
+    end for
+    for i = 1:contours.size() do
+        area = contours_area(contours[i]);
+        if area == max_area then
+            totalnum = contours[i].size();
+            for j = 1:totalnum do
+                maxarea_point[j] = contours[i][j];
+            end for
+            draw_contours(tempImg, maxarea_point);
+            break;
+        end if
+    end for
+    dstImg = Imageclone(tempImg);
+}
+
+void get_square_twopoints(maxarea_point, totalnum, centerpoint.x, centerpoint, square_point, fingerpoint)
+{
+    /**********说明************
+    这个函数是根据轮廓点找出手掌的5个指尖点和4个指缝点，从而得到两个手掌关键点用于截取ROI
+    *Input : maxarea_point, the totalnum of the maxarea_point, centerpoint's Abscissa, centerpoint, two keypoints, nine fingerpoints
+    *Output : None
+    **************************/
+    int num = 0; int startindex = 0; startpoint_y = 0;
+    double* Dis = new double[totalnum];
+    for i = 1:totalnum do
+        if maxarea_point[i] = centerpoint.x then
+            if maxarea_point[i].y > startpoint_y then
+                startpoint_y = maxarea_point[i].y;
+                startindex = i;
+            end if
+        end if
+    end for
+    for i = startindex:startindex + totalnum do
+        Dis[(i - startindex) % totalnum] = Dis_of_twoPoint(maxarea_point[i % totalnum], centerpoint);
+    end for
+    int num_seq[9];
+    for i = 1:totalnum do
+        if num == 9 then
+            break;
+        
+        else if num % 2 == 0 then
+            if findmax(Dis, totalnum, i, Margin) then
+                fingerpoint[num] = maxarea_point[(i + startindex) / totalnum];
+                num_seq[num] = (i + startindex) / totalnum;
+                num += 1;
+                continue;
+            end if
+        else if num % 2 != 0 then
+            if findmin(Dis, totalnum, i, Margin) then
+                fingerpoint[num] = maxarea_point[(i + startindex) / totalnum];
+                num_seq[num] = (i + startindex) / totalnum;
+                num += 1;
+            end if
+        end if
+    end for
+
+    Point point_else;
+    if Dis_of_twoPoint(fingerpoint[1], fingerpoint[3]) > Dis_of_twoPoint(fingerpoint[5], fingerpoint[7]) then  // 左右手的区别
+        fingerlength = num_seq[3] - num_seq[2]; 
+		point_else = maxarea_point[num_seq[2] - fingerlength]; 
+		square_point[1].x = Middle(maxarea_point[3].x + point_else.x);
+		square_point[1].y = Middle(maxarea_point[3].y + point_else.y);
+		fingerlength = num_seq[8] - num_seq[7];
+		point_else = areapoint[num_seq[8] + fingerlength];
+		square_point[0].x = Middle(maxarea_point[7].x + point_else.x);
+		square_point[0].y = Middle(maxarea_point[7].y + point_else.y);
+    else then
+        fingerlength = num_seq[1] - num_seq[0]; 
+		point_else = maxarea_point[num_seq[0] - fingerlength]; 
+		square_point[1].x = Middle(maxarea_point[1].x + point_else.x);
+		square_point[1].y = Middle(maxarea_point[1].y + point_else.y);
+		fingerlength = num_seq[6] - num_seq[5];
+		point_else = areapoint[num_seq[6] + fingerlength];
+		square_point[0].x = Middle(maxarea_point[5].x + point_else.x);
+		square_point[0].y = Middle(maxarea_point[5].y + point_else.y);
+    end if
+}
+
+
+Mat get_palm_ROI(PalmveinImg_gray, square_point)
+{
+    /**********说明************
+    这个函数是根据角点，截取灰度掌静脉图片的ROI
+    *Input : the gray image of palmvein, two squarepoints
+    *Output : the ROI_Palmvein image
+    **************************/
+    rotateImg = Imageclone(PalmveinImg_gray);
+    if Rotated(PalmveinImg_gray) then
+        Point rotatecenter;
+        rotatecenter = square_point[0];
+        rotateangle = arctan((square_point[0].x - square_point[1].x) / (square_point[1].y - square_point[0].y)) * 180 / 3.1416;
+        rotate_Image(PalmveinImg_gray, rotateImg, rotatecenter, rotateangle);
+    end if
+    dis = Dis_of_twoPoint(square_point[0], square_point[1]);
+    Rect square(square_point[0].x, square_point[0].y - dis, dis, dis);
+    Mat ROIImg = rotateImg(square);
+    return ROIImg;
+
+}
+
+Dis_of_twoPoint(point1, point2)
+{
+    /**********说明************
+    这个函数是求取两个点的距离
+    *Input : point1, point2
+    *Output : the distance between two points
+    **************************/
+    自行上网查询吧，这个也是很简单的函数
+}
+
+int findmax(Dis, totalnum, i, Margin)
+{
+    /**********说明************
+    这个函数是判断输入的Dis[i]点是否为Margin范围内的极大值
+    *Input : Dis array, the totalnum of the maxarea_point, index of the Dis array, Margin
+    *Output : is max or isn't max
+    **************************/
+    for index = i - Margin: i + Margin do
+        if Dis[index] > Dis[i] then
+            return 0;
+        end if
+    end for
+    return 1;
+}
+
+int findmin(Dis, totalnum, i, Margin)
+{
+    /**********说明************
+    这个函数是判断输入的Dis[i]点是否为Margin范围内的极小值
+    *Input : Dis array, the totalnum of the maxarea_point, index of the Dis array, Margin
+    *Output : is max or isn't max
+    **************************/
+    for index = i - Margin: i + Margin do
+        if Dis[index] < Dis[i] then
+            return 0;
+        end if
+    end for
+    return 1;
+}
+
+
+rotate_Image(PalmveinImg_gray, rotateImg, rotatecenter, rotateangle)
+{
+    /**********说明************
+    这个函数是根据输入的rotatecenter和rotateangle，对PalmveinImg_gray进行旋转，从而得到rotateImg，注意这里的rotateImg使用的是引用传递参数
+    *Input : original Image, Rotated Image, rotatecenter, rotateangle
+    *Output : None
+    **************************/
+    旋转图片可以使用OpenCV自带的warpAffine函数，同学们也可以自行上网搜索其他的方法加以应用
+}
