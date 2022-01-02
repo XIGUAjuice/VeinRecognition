@@ -2,11 +2,15 @@
 import cv2
 import numpy as np
 import matplotlib.pyplot as plt
+import os
+import glob
+import torch
+import torchvision
+from torch.utils.data import Dataset
 from numpy.core.fromnumeric import argmax
+
+
 #%%
-img = cv2.imread("finger/003_2/04.jpg", cv2.IMREAD_GRAYSCALE)
-
-
 def rotate_image(image, center, angle):
     rot_mat = cv2.getRotationMatrix2D(center, angle, 1.0)
     result = cv2.warpAffine(image,
@@ -23,7 +27,7 @@ def show(img):
 
 
 class FingerROIExtracter:
-    def __init__(self, upper, lower) -> None:
+    def __init__(self, upper=50, lower=250) -> None:
 
         x = np.array([[-1, 0, 1]])
         self.kernel_left = np.repeat(x, 8, axis=0)
@@ -127,11 +131,8 @@ class Gabor:
                                          self.psi)
 
     def transform(self, img):
-        result = cv2.filter2D(img, 1, self.kernel)
+        result = cv2.filter2D(img, cv2.CV_8UC1, self.kernel)
         return result
-
-
-# %%
 
 
 class PalmROIExtracter:
@@ -234,3 +235,54 @@ class PalmROIExtracter:
         axs[1, 2].imshow(result)
 
         plt.show()
+
+
+#%%
+def saveROI(paths, roi_extracter, dir):
+    os.makedirs(dir)
+    i = 1
+    for path in paths:
+        try:
+            img = cv2.imread(path, cv2.cv2.IMREAD_GRAYSCALE)
+            roi = roi_extracter.transform(img)
+            cv2.imwrite("{}/{}.png".format(dir, i), roi)
+            i = i + 1
+        except Exception:
+            print(path)
+
+# %%
+dirs = glob.glob("finger/*")
+finger_roi_extracter = FingerROIExtracter()
+i = 1
+for dir in dirs:
+    paths = glob.glob("{}/*.jpg".format(dir))
+    saveROI(paths, finger_roi_extracter, "ROI_finger/{}".format(i))
+    i = i + 1
+
+#%%
+dirs = glob.glob("palm/*")
+palm_roi_extracter = PalmROIExtracter()
+i = 1
+for dir in dirs:
+    paths = glob.glob("{}/*.bmp".format(dir))
+    saveROI(paths, palm_roi_extracter, "ROI_palm/{}".format(i))
+    i = i + 1
+# %%
+
+class FingerDataset(Dataset):
+    def __init__(self, is_val=False) -> None:
+        super().__init__()
+        self.is_val = is_val
+        dirs = glob.glob("ROI_finger/*")
+        for dir in dirs:
+            png_paths = glob.glob("dir/*")
+            if is_val:
+                self.paths = png_paths[0]
+            else:
+                self.paths = png_paths[1:]
+            
+    def __len__(self) -> int:
+        return len(self.paths)
+
+    def __getitem__(self, index: int) :
+        
