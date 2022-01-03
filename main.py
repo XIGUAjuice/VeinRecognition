@@ -5,7 +5,9 @@ import matplotlib.pyplot as plt
 import os
 import glob
 import torch
-import torchvision
+from torchvision import transforms
+from torchvision import models
+
 from torch.utils.data import Dataset
 from numpy.core.fromnumeric import argmax
 
@@ -21,7 +23,9 @@ def rotate_image(image, center, angle):
 
 
 #%%
-def show(img):
+def show(img, is_tensor=False):
+    if is_tensor:
+        img = img.permute(1, 2, 0).numpy()
     cv2.imshow("img", img)
     cv2.waitKey(0)
 
@@ -57,7 +61,7 @@ class FingerROIExtracter:
         rotate = -np.arctan(f[0]) / 2 / np.pi * 360
         return rotate
 
-    def transform(self, img):
+    def __call__(self, img):
         img = img[0:350]
         left = cv2.filter2D(img[:, :int(img.shape[1] / 2)], -1,
                             self.kernel_left)
@@ -82,57 +86,6 @@ class FingerROIExtracter:
 
         roi = img[self.upper:self.lower, margin[0] + 3:margin[1] - 3]
         return roi
-
-
-# %%
-class CLAHE:
-    def __init__(self, clip_limit, tile_grid_size) -> None:
-        self.clip_limit = clip_limit
-        self.tile_grid_size = tile_grid_size
-        self.clahe = cv2.createCLAHE(self.clip_limit, self.tile_grid_size)
-
-    def transform(self, img):
-        result = self.clahe.apply(img)
-        return result
-
-
-# %%
-class AdaptiveThreshold:
-    def __init__(self,
-                 block_size,
-                 c,
-                 max_value=255,
-                 adaptive_method=cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
-                 threshold_type=cv2.THRESH_BINARY) -> None:
-        self.max_value = max_value
-        self.adaptive_method = adaptive_method
-        self.threshold_type = threshold_type
-        self.block_size = block_size
-        self.c = c
-
-    def transform(self, img):
-        result = self.adaptive_threshold = cv2.adaptiveThreshold(
-            img, self.max_value, self.adaptive_method, self.threshold_type,
-            self.block_size, self.c)
-        return result
-
-
-#%%
-class Gabor:
-    def __init__(self, kernel_size, sigma, theta, lambd, gamma, psi) -> None:
-        self.kernel_size = kernel_size
-        self.sigma = sigma
-        self.theta = theta
-        self.lambd = lambd
-        self.gamma = gamma
-        self.psi = psi
-        self.kernel = cv2.getGaborKernel(self.kernel_size, self.sigma,
-                                         self.theta, self.lambd, self.gamma,
-                                         self.psi)
-
-    def transform(self, img):
-        result = cv2.filter2D(img, cv2.CV_8UC1, self.kernel)
-        return result
 
 
 class PalmROIExtracter:
@@ -187,7 +140,7 @@ class PalmROIExtracter:
         right = int(center[0] + radius / np.sqrt(2) * scale)
         return left, upper, right, lower
 
-    def transform(self, img):
+    def __call__(self, img):
         mask = self.getMask(img)
         center, radius = self.getCircleInside(mask)
         mask = self.cropWrist(mask, center, radius)
@@ -237,6 +190,76 @@ class PalmROIExtracter:
         plt.show()
 
 
+# %%
+class CLAHE:
+    def __init__(self, clip_limit, tile_grid_size) -> None:
+        self.clip_limit = clip_limit
+        self.tile_grid_size = tile_grid_size
+        self.clahe = cv2.createCLAHE(self.clip_limit, self.tile_grid_size)
+
+    def __call__(self, img):
+        result = self.clahe.apply(img)
+        return result
+
+
+# %%
+class AdaptiveThreshold:
+    def __init__(self,
+                 block_size,
+                 c,
+                 max_value=255,
+                 adaptive_method=cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
+                 threshold_type=cv2.THRESH_BINARY) -> None:
+        self.max_value = max_value
+        self.adaptive_method = adaptive_method
+        self.threshold_type = threshold_type
+        self.block_size = block_size
+        self.c = c
+
+    def __call__(self, img):
+        result = self.adaptive_threshold = cv2.adaptiveThreshold(
+            img, self.max_value, self.adaptive_method, self.threshold_type,
+            self.block_size, self.c)
+        return result
+
+
+#%%
+class ToRGB:
+    def __init__(self, code) -> None:
+        self.code = code
+
+    def __call__(self, img):
+        result = cv2.cvtColor(img, self.code)
+        return result
+
+
+class Resize:
+    def __init__(self, size) -> None:
+        self.size = size
+
+    def __call__(self, img):
+        result = cv2.resize(img, self.size)
+        return result
+
+
+#%%
+class Gabor:
+    def __init__(self, kernel_size, sigma, theta, lambd, gamma, psi) -> None:
+        self.kernel_size = kernel_size
+        self.sigma = sigma
+        self.theta = theta
+        self.lambd = lambd
+        self.gamma = gamma
+        self.psi = psi
+        self.kernel = cv2.getGaborKernel(self.kernel_size, self.sigma,
+                                         self.theta, self.lambd, self.gamma,
+                                         self.psi)
+
+    def __call__(self, img):
+        result = cv2.filter2D(img, cv2.CV_8UC1, self.kernel)
+        return result
+
+
 #%%
 def saveROI(paths, roi_extracter, dir):
     os.makedirs(dir)
@@ -244,11 +267,89 @@ def saveROI(paths, roi_extracter, dir):
     for path in paths:
         try:
             img = cv2.imread(path, cv2.cv2.IMREAD_GRAYSCALE)
-            roi = roi_extracter.transform(img)
+            roi = roi_extracter(img)
             cv2.imwrite("{}/{}.png".format(dir, i), roi)
             i = i + 1
         except Exception:
             print(path)
+
+
+#%%
+class FingerDataset(Dataset):
+    def __init__(self, is_val=False) -> None:
+        super().__init__()
+        self.is_val = is_val
+        dirs = glob.glob("ROI_finger/*")
+        self.paths = []
+        for dir in dirs:
+            png_paths = glob.glob("{}/*".format(dir))
+            if is_val:
+                self.paths.append(png_paths[0])
+            else:
+                self.paths.extend(png_paths[1:])
+
+    def __len__(self) -> int:
+        return len(self.paths)
+
+    def __getitem__(self, index: int):
+        compose = transforms.Compose([
+            CLAHE(clip_limit=10, tile_grid_size=(8, 8)),
+            AdaptiveThreshold(block_size=31, c=2),
+            Gabor(kernel_size=(9, 9),
+                  sigma=0.3,
+                  theta=np.pi / 2,
+                  lambd=50,
+                  gamma=1,
+                  psi=0),
+            Resize((224, 224)),
+            ToRGB(cv2.COLOR_GRAY2RGB),
+            transforms.ToTensor()
+        ])
+        path = self.paths[index]
+        img = cv2.imread(path, cv2.IMREAD_GRAYSCALE)
+        img_tensor = compose(img)
+        label = os.path.split(path)[0].split("\\")[1]
+
+        return img_tensor, label
+
+#%%
+class PalmDataset(Dataset):
+    def __init__(self, is_val=False) -> None:
+        super().__init__()
+        self.is_val = is_val
+        dirs = glob.glob("ROI_palm/*")
+        self.paths = []
+        for dir in dirs:
+            png_paths = glob.glob("{}/*".format(dir))
+            if is_val:
+                self.paths.append(png_paths[0])
+            else:
+                self.paths.extend(png_paths[1:])
+
+    def __len__(self) -> int:
+        return len(self.paths)
+
+    def __getitem__(self, index: int):
+        compose = transforms.Compose([
+            CLAHE(clip_limit=10, tile_grid_size=(8, 8)),
+            AdaptiveThreshold(block_size=59, c=2),
+            Gabor(kernel_size=(9, 9),
+                  sigma=0.3,
+                  theta=np.pi / 2,
+                  lambd=50,
+                  gamma=1,
+                  psi=0),
+            Resize((224, 224)),
+            ToRGB(cv2.COLOR_GRAY2RGB),
+            transforms.ToTensor()
+        ])
+        path = self.paths[index]
+        img = cv2.imread(path, cv2.IMREAD_GRAYSCALE)
+        img_tensor = compose(img)
+        label = os.path.split(path)[0].split("\\")[1]
+
+        return img_tensor, label
+
 
 # %%
 dirs = glob.glob("finger/*")
@@ -267,22 +368,3 @@ for dir in dirs:
     paths = glob.glob("{}/*.bmp".format(dir))
     saveROI(paths, palm_roi_extracter, "ROI_palm/{}".format(i))
     i = i + 1
-# %%
-
-class FingerDataset(Dataset):
-    def __init__(self, is_val=False) -> None:
-        super().__init__()
-        self.is_val = is_val
-        dirs = glob.glob("ROI_finger/*")
-        for dir in dirs:
-            png_paths = glob.glob("dir/*")
-            if is_val:
-                self.paths = png_paths[0]
-            else:
-                self.paths = png_paths[1:]
-            
-    def __len__(self) -> int:
-        return len(self.paths)
-
-    def __getitem__(self, index: int) :
-        
