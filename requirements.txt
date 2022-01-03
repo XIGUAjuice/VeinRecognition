@@ -1,0 +1,5 @@
+torch==1.5.1
+opencv-python==4.3.0.36
+torchvision==0.6.1
+numpy==1.19.0
+matplotlib==3.2.2
