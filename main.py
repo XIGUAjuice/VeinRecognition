@@ -5,10 +5,16 @@ import matplotlib.pyplot as plt
 import os
 import glob
 import torch
+import torch.nn as nn
 from torchvision import transforms
 from torchvision import models
+import time
+import torch.optim as optim
+from torch.optim import lr_scheduler
+import copy
 
-from torch.utils.data import Dataset
+from torch.utils.data import Dataset, dataloader
+from torch.utils.data import DataLoader
 from numpy.core.fromnumeric import argmax
 
 
@@ -190,6 +196,16 @@ class PalmROIExtracter:
         plt.show()
 
 
+#%%
+class EqualHist:
+    def __init__(self) -> None:
+        pass
+
+    def __call__(self, img):
+        result = cv2.equalizeHist(img)
+        return result
+
+
 # %%
 class CLAHE:
     def __init__(self, clip_limit, tile_grid_size) -> None:
@@ -224,7 +240,7 @@ class AdaptiveThreshold:
 
 
 #%%
-class ToRGB:
+class CvtColor:
     def __init__(self, code) -> None:
         self.code = code
 
@@ -262,7 +278,10 @@ class Gabor:
 
 #%%
 def saveROI(paths, roi_extracter, dir):
-    os.makedirs(dir)
+    try:
+        os.makedirs(dir)
+    except Exception:
+        print("文件夹已存在")
     i = 1
     for path in paths:
         try:
@@ -293,24 +312,26 @@ class FingerDataset(Dataset):
 
     def __getitem__(self, index: int):
         compose = transforms.Compose([
+            EqualHist(),
             CLAHE(clip_limit=10, tile_grid_size=(8, 8)),
-            AdaptiveThreshold(block_size=31, c=2),
-            Gabor(kernel_size=(9, 9),
-                  sigma=0.3,
-                  theta=np.pi / 2,
-                  lambd=50,
-                  gamma=1,
-                  psi=0),
+            # AdaptiveThreshold(block_size=31, c=2),
+            # Gabor(kernel_size=(9, 9),
+            #       sigma=0.3,
+            #       theta=np.pi / 2,
+            #       lambd=50,
+            #       gamma=1,
+            #       psi=0),
             Resize((224, 224)),
-            ToRGB(cv2.COLOR_GRAY2RGB),
+            CvtColor(cv2.COLOR_GRAY2RGB),
             transforms.ToTensor()
         ])
         path = self.paths[index]
         img = cv2.imread(path, cv2.IMREAD_GRAYSCALE)
         img_tensor = compose(img)
         label = os.path.split(path)[0].split("\\")[1]
-
+        label = torch.tensor(int(label))
         return img_tensor, label
+
 
 #%%
 class PalmDataset(Dataset):
@@ -340,21 +361,22 @@ class PalmDataset(Dataset):
                   gamma=1,
                   psi=0),
             Resize((224, 224)),
-            ToRGB(cv2.COLOR_GRAY2RGB),
+            CvtColor(cv2.COLOR_GRAY2RGB),
             transforms.ToTensor()
         ])
         path = self.paths[index]
         img = cv2.imread(path, cv2.IMREAD_GRAYSCALE)
         img_tensor = compose(img)
         label = os.path.split(path)[0].split("\\")[1]
-
+        label = torch.tensor(int(label))
         return img_tensor, label
 
 
 # %%
+""" 生成ROI数据集 """
 dirs = glob.glob("finger/*")
 finger_roi_extracter = FingerROIExtracter()
-i = 1
+i = 0
 for dir in dirs:
     paths = glob.glob("{}/*.jpg".format(dir))
     saveROI(paths, finger_roi_extracter, "ROI_finger/{}".format(i))
@@ -363,8 +385,108 @@ for dir in dirs:
 #%%
 dirs = glob.glob("palm/*")
 palm_roi_extracter = PalmROIExtracter()
-i = 1
+i = 0
 for dir in dirs:
     paths = glob.glob("{}/*.bmp".format(dir))
     saveROI(paths, palm_roi_extracter, "ROI_palm/{}".format(i))
     i = i + 1
+
+# %%
+def train_model(model, criterion, optimizer, scheduler, num_epochs=25):
+    since = time.time()
+
+    best_model_wts = copy.deepcopy(model.state_dict())
+    best_acc = 0.0
+
+    for epoch in range(num_epochs):
+        print('Epoch {}/{}'.format(epoch, num_epochs - 1))
+        print('-' * 10)
+
+        # Each epoch has a training and validation phase
+        for phase in ['train', 'val']:
+            if phase == 'train':
+                model.train()  # Set model to training mode
+            else:
+                model.eval()  # Set model to evaluate mode
+
+            running_loss = 0.0
+            running_corrects = 0
+
+            # Iterate over data.
+            for inputs, labels in dataloaders[phase]:
+                inputs = inputs.to(device)
+                labels = labels.to(device)
+
+                # zero the parameter gradients
+                optimizer.zero_grad()
+
+                # forward
+                # track history if only in train
+                with torch.set_grad_enabled(phase == 'train'):
+                    outputs = model(inputs)
+                    _, preds = torch.max(outputs, 1)
+                    loss = criterion(outputs, labels)
+
+                    # backward + optimize only if in training phase
+                    if phase == 'train':
+                        loss.backward()
+                        optimizer.step()
+
+                # statistics
+                running_loss += loss.item() * inputs.size(0)
+                running_corrects += torch.sum(preds == labels.data)
+            if phase == 'train':
+                scheduler.step()
+
+            epoch_loss = running_loss / dataset_sizes[phase]
+            epoch_acc = running_corrects.double() / dataset_sizes[phase]
+
+            print('{} Loss: {:.4f} Acc: {:.4f}'.format(phase, epoch_loss,
+                                                       epoch_acc))
+
+            # deep copy the model
+            if phase == 'val' and epoch_acc > best_acc:
+                best_acc = epoch_acc
+                best_model_wts = copy.deepcopy(model.state_dict())
+
+        print()
+
+    time_elapsed = time.time() - since
+    print('Training complete in {:.0f}m {:.0f}s'.format(
+        time_elapsed // 60, time_elapsed % 60))
+    print('Best val Acc: {:4f}'.format(best_acc))
+
+    # load best model weights
+    model.load_state_dict(best_model_wts)
+    return model
+
+
+#%%
+device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+# device = "cpu"
+model = models.vgg19(pretrained=True)
+model.classifier[6] = nn.Linear(in_features=4096, out_features=10)
+finger_dataset_train = FingerDataset()
+finger_loader_train = DataLoader(finger_dataset_train,
+                                 batch_size=8,
+                                 shuffle=True)
+finger_dataset_val = FingerDataset(is_val=True)
+finger_loader_val = DataLoader(finger_dataset_val, batch_size=8, shuffle=True)
+dataloaders = {'train': finger_loader_train, 'val': finger_loader_val}
+dataset_sizes = {
+    'train': len(finger_dataset_train),
+    'val': len(finger_dataset_val)
+}
+
+optimizer_ft = optim.SGD(model.parameters(), lr=0.001, momentum=0.9)
+criterion = nn.CrossEntropyLoss()
+# Decay LR by a factor of 0.1 every 7 epochs
+exp_lr_scheduler = lr_scheduler.StepLR(optimizer_ft, step_size=7, gamma=0.1)
+model = model.to(device)
+model = train_model(model,
+                    criterion,
+                    optimizer_ft,
+                    exp_lr_scheduler,
+                    num_epochs=25)
+torch.save(model.state_dict(), "finger.pt")
+# %%
