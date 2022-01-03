@@ -1,3 +1,4 @@
+#%%
 import cv2
 import time
 import copy
@@ -105,7 +106,7 @@ def visulize(model, dataloaders):
     model.eval()
     # device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     device = "cpu"
-    
+
     with torch.no_grad():
         fig, axs = plt.subplots(3, 4, figsize=(30, 20))
         plot_id = 0
@@ -157,14 +158,64 @@ class FingerROIExtracter:
         right_row[:index] = 255
         right_row[index:] = 0
 
-    def getRotationFinger(self, left_edge, right_edge):
+    def getRotationFinger(self, left_edge, right_edge, draw=False):
         left_edge = np.array(left_edge)
         right_edge = np.array(right_edge)
         center_line = ((left_edge + right_edge) // 2)
         x = np.arange(0, 350, 1)
         f = np.polyfit(x, center_line, 1)
         rotate = -np.arctan(f[0]) / 2 / np.pi * 360
-        return rotate
+
+        if not draw:
+            return rotate
+        else:
+            return center_line, f, rotate
+
+    def draw(self, img):
+        fig, axs = plt.subplots(2, 3, figsize=(30, 20))
+        plt.setp(axs, xticks=[], yticks=[])
+        fig.tight_layout()
+
+        axs[0, 0].imshow(img, cmap='gray')
+
+        img = img[0:350]
+        axs[0, 1].imshow(img, cmap='gray')
+
+        left = cv2.filter2D(img[:, :int(img.shape[1] / 2)], -1,
+                            self.kernel_left)
+        right = cv2.filter2D(img[:, int(img.shape[1] / 2):], -1,
+                             self.kernel_right)
+        mask = np.concatenate((left, right), axis=1)
+        axs[0, 2].imshow(mask, cmap='gray')
+
+        left_edge = []
+        right_edge = []
+        np.apply_along_axis(self.leftFill, 1, left, left_edge=left_edge)
+        np.apply_along_axis(self.rightFill, 1, right, right_edge=right_edge)
+        center_line, f, rotation = self.getRotationFinger(left_edge,
+                                                          right_edge,
+                                                          draw=True)
+        mask = np.concatenate((left, right), axis=1)
+        result = cv2.cvtColor(mask, cv2.COLOR_GRAY2RGB)
+        for y in np.arange(0, 350, 1):
+            cv2.circle(result, (center_line[y], y), 2, (255, 0, 0))
+        axs[1, 0].imshow(result)
+
+        image_center = tuple(np.array(mask.shape[1::-1]) / 2)
+        result = rotate_image(result, image_center,
+                              rotation)
+        axs[1, 1].imshow(result)
+
+        all_white_column = np.all(mask, axis=0)
+        margin = []
+        for i in range(all_white_column.shape[0] - 1):
+            if all_white_column[i] != all_white_column[i + 1]:
+                margin.append(i)
+        cv2.rectangle(result, (margin[0] + 3, self.upper),
+                      (margin[1] - 3, self.lower), (0, 255, 0), 2)
+        axs[1, 2].imshow(result)
+
+        plt.show()
 
     def __call__(self, img):
         img = img[0:350]
@@ -368,3 +419,6 @@ class Gabor:
     def __call__(self, img):
         result = cv2.filter2D(img, cv2.CV_8UC1, self.kernel)
         return result
+
+
+# %%
