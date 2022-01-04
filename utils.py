@@ -28,11 +28,10 @@ def train_model(model,
                 dataset_sizes,
                 criterion,
                 optimizer,
-                scheduler,
                 num_epochs=25):
     since = time.time()
-    # device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-    device = "cpu"
+    device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+    # device = "cpu"
 
     model = model.to(device)
     best_model_wts = copy.deepcopy(model.state_dict())
@@ -75,8 +74,6 @@ def train_model(model,
                 # statistics
                 running_loss += loss.item() * inputs.size(0)
                 running_corrects += torch.sum(preds == labels.data)
-            if phase == 'train':
-                scheduler.step()
 
             epoch_loss = running_loss / dataset_sizes[phase]
             epoch_acc = running_corrects.double() / dataset_sizes[phase]
@@ -172,14 +169,15 @@ class FingerROIExtracter:
             return center_line, f, rotate
 
     def draw(self, img):
-        fig, axs = plt.subplots(2, 3, figsize=(30, 20))
+        fig, axs = plt.subplots(2, 3, figsize=(15, 8))
         plt.setp(axs, xticks=[], yticks=[])
-        fig.tight_layout()
 
         axs[0, 0].imshow(img, cmap='gray')
+        axs[0, 0].set_title("(a) 原始图像", y=0, pad=-20, fontsize=20)
 
         img = img[0:350]
         axs[0, 1].imshow(img, cmap='gray')
+        axs[0, 1].set_title("(b) 截去指尖", y=0, pad=-20, fontsize=20)
 
         left = cv2.filter2D(img[:, :int(img.shape[1] / 2)], -1,
                             self.kernel_left)
@@ -187,6 +185,7 @@ class FingerROIExtracter:
                              self.kernel_right)
         mask = np.concatenate((left, right), axis=1)
         axs[0, 2].imshow(mask, cmap='gray')
+        axs[0, 2].set_title("(c) 边缘提取", y=0, pad=-20, fontsize=20)
 
         left_edge = []
         right_edge = []
@@ -200,11 +199,12 @@ class FingerROIExtracter:
         for y in np.arange(0, 350, 1):
             cv2.circle(result, (center_line[y], y), 2, (255, 0, 0))
         axs[1, 0].imshow(result)
+        axs[1, 0].set_title("(d) 计算中线", y=0, pad=-20, fontsize=20)
 
         image_center = tuple(np.array(mask.shape[1::-1]) / 2)
-        result = rotate_image(result, image_center,
-                              rotation)
+        result = rotate_image(result, image_center, rotation)
         axs[1, 1].imshow(result)
+        axs[1, 1].set_title("(e) 旋转校正", y=0, pad=-20, fontsize=20)
 
         all_white_column = np.all(mask, axis=0)
         margin = []
@@ -214,6 +214,7 @@ class FingerROIExtracter:
         cv2.rectangle(result, (margin[0] + 3, self.upper),
                       (margin[1] - 3, self.lower), (0, 255, 0), 2)
         axs[1, 2].imshow(result)
+        axs[1, 2].set_title("(f) ROI提取", y=0, pad=-20, fontsize=20)
 
         plt.show()
 
@@ -240,6 +241,7 @@ class FingerROIExtracter:
             if all_white_column[i] != all_white_column[i + 1]:
                 margin.append(i)
 
+        img = cv2.equalizeHist(img)
         roi = img[self.upper:self.lower, margin[0] + 3:margin[1] - 3]
         return roi
 
@@ -306,42 +308,47 @@ class PalmROIExtracter:
         return img[upper:lower, left:right]
 
     def draw(self, img):
-        fig, axs = plt.subplots(2, 3, figsize=(30, 20))
+        fig, axs = plt.subplots(2, 3, figsize=(15, 10))
         plt.setp(axs, xticks=[], yticks=[])
-        fig.tight_layout()
 
         axs[0, 0].imshow(img, cmap="gray")
+        axs[0, 0].set_title("(a) 原始图像", y=0, pad=-20, fontsize=20)
 
         mask = self.getMask(img)
         axs[0, 1].imshow(mask, cmap="gray")
+        axs[0, 1].set_title("(b) 手掌分割", y=0, pad=-20, fontsize=20)
 
         center, radius = self.getCircleInside(mask)
         mask = self.cropWrist(mask, center, radius)
         result = cv2.cvtColor(mask, cv2.COLOR_GRAY2RGB)
-        cv2.circle(result, tuple(center), int(radius), (0, 0, 255), 2,
+        cv2.circle(result, tuple(center), int(radius), (0, 0, 255), 6,
                    cv2.LINE_8, 0)
-        cv2.circle(result, tuple(center), int(1.5 * radius), (0, 255, 0), 2,
+        cv2.circle(result, tuple(center), int(1.5 * radius), (0, 255, 0), 6,
                    cv2.LINE_8, 0)
         rotate, point_1, point_2, mid_point_x, mid_point_y, intersects = self.getRotationPalm(
             mask, center, radius, draw=True)
-        cv2.circle(result, point_1, 8, (255, 165, 0), -1)
-        cv2.circle(result, point_2, 8, (255, 165, 0), -1)
-        cv2.circle(result, (mid_point_x, mid_point_y), 8, (255, 0, 0), -1)
-        cv2.line(result, center, (mid_point_x, mid_point_y), (0, 255, 255), 2)
+        cv2.circle(result, point_1, 18, (255, 165, 0), -1)
+        cv2.circle(result, point_2, 18, (255, 165, 0), -1)
+        cv2.circle(result, (mid_point_x, mid_point_y), 18, (255, 0, 0), -1)
+        cv2.line(result, center, (mid_point_x, mid_point_y), (0, 255, 255), 6)
         axs[0, 2].imshow(result)
+        axs[0, 2].set_title("(c) 最大内切圆", y=0, pad=-20, fontsize=20)
 
         axs[1, 0].plot(np.arange(intersects.shape[0]), intersects)
+        axs[1, 0].set_title("(c) 定位中指", y=0, pad=-20, fontsize=20)
 
         result = rotate_image(result, center, rotate)
         axs[1, 1].imshow(result)
+        axs[1, 1].set_title("(d) 旋转校正", y=0, pad=-20, fontsize=20)
 
         left, upper, right, lower = self.getSquareInside(center, radius)
-        cv2.rectangle(result, (left, upper), (right, lower), (0, 128, 0), 2)
+        cv2.rectangle(result, (left, upper), (right, lower), (0, 128, 0), 6)
         left, upper, right, lower = self.getSquareInside(center,
                                                          radius,
                                                          scale=0.8)
-        cv2.rectangle(result, (left, upper), (right, lower), (255, 0, 0), 2)
+        cv2.rectangle(result, (left, upper), (right, lower), (255, 0, 0), 6)
         axs[1, 2].imshow(result)
+        axs[1, 2].set_title("(e) ROI截取", y=0, pad=-20, fontsize=20)
 
         plt.show()
 
@@ -363,6 +370,16 @@ class CLAHE:
 
     def __call__(self, img):
         result = self.clahe.apply(img)
+        return result
+
+
+class OTSU:
+    def __init__(self) -> None:
+        pass
+
+    def __call__(self, img):
+        _, result = cv2.threshold(img, 0, 255,
+                                  cv2.THRESH_BINARY + cv2.THRESH_OTSU)
         return result
 
 

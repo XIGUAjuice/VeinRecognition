@@ -1,4 +1,3 @@
-
 import glob
 import os
 
@@ -21,6 +20,7 @@ def saveROI(paths, roi_extracter, dir):
             i = i + 1
         except Exception:
             print(path)
+
 
 """ 生成ROI数据集 """
 dirs = glob.glob("finger/*")

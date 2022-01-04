@@ -1,3 +1,4 @@
+#%%
 import glob
 import os
 
@@ -11,7 +12,7 @@ from torch.utils.data import DataLoader, Dataset
 from torchvision import models, transforms
 
 from utils import (CLAHE, AdaptiveThreshold, CvtColor, EqualHist, Gabor,
-                   Resize, train_model)
+                   Resize, train_model, OTSU)
 
 
 class PalmDataset(Dataset):
@@ -33,14 +34,14 @@ class PalmDataset(Dataset):
     def __getitem__(self, index: int):
         compose = transforms.Compose([
             EqualHist(),
-            CLAHE(clip_limit=10, tile_grid_size=(8, 8)),
-            AdaptiveThreshold(block_size=59, c=2),
+            CLAHE(clip_limit=50, tile_grid_size=(11, 11)),
             Gabor(kernel_size=(9, 9),
-                  sigma=0.5,
+                  sigma=0.7,
                   theta=np.pi / 2,
-                  lambd=50,
-                  gamma=1,
-                  psi=0),
+                  lambd=18.3,
+                  gamma=20,
+                  psi=0.1),
+            OTSU(),
             Resize((224, 224)),
             CvtColor(cv2.COLOR_GRAY2RGB),
             transforms.ToTensor()
@@ -48,14 +49,17 @@ class PalmDataset(Dataset):
         path = self.paths[index]
         img = cv2.imread(path, cv2.IMREAD_GRAYSCALE)
         img_tensor = compose(img)
-        label = os.path.split(path)[0].split("\\")[1]
+        if os.name == 'nt':
+            label = os.path.split(path)[0].split("\\")[1]
+        else:
+            label = os.path.split(path)[0].split("/")[1]
         label = torch.tensor(int(label))
         return img_tensor, label
 
 
-batch_size = 8
-model = models.vgg19(pretrained=True)
-model.classifier[6] = nn.Linear(in_features=4096, out_features=10)
+batch_size = 20
+model = models.vgg19(pretrained=False)
+model.classifier[6] = nn.Linear(in_features=4096, out_features=4)
 
 datasets = {'train': PalmDataset(), 'val': PalmDataset(is_val=True)}
 dataloaders = {
@@ -63,16 +67,13 @@ dataloaders = {
     for x in ['train', 'val']
 }
 dataset_sizes = {x: len(datasets[x]) for x in ['train', 'val']}
-
+#%%
 optimizer_ft = optim.SGD(model.parameters(), lr=0.001, momentum=0.9)
 criterion = nn.CrossEntropyLoss()
-# 学习率衰减
-exp_lr_scheduler = lr_scheduler.StepLR(optimizer_ft, step_size=7, gamma=0.1)
 model = train_model(model,
                     dataloaders,
                     dataset_sizes,
                     criterion,
                     optimizer_ft,
-                    exp_lr_scheduler,
-                    num_epochs=25)
+                    num_epochs=50)
 torch.save(model.state_dict(), "palm.pt")
