@@ -1,4 +1,3 @@
-#%%
 import glob
 import os
 
@@ -57,26 +56,24 @@ class FingerDataset(Dataset):
         return img_tensor, label
 
 
-batch_size = 20
-model = models.vgg19(pretrained=False)
-model.classifier[6] = nn.Linear(in_features=4096, out_features=10)
+if __name__ == '__main__':
+    batch_size = 20
+    model = models.vgg19(pretrained=False)
+    model.classifier[6] = nn.Linear(in_features=4096, out_features=10)
 
-datasets = {'train': FingerDataset(), 'val': FingerDataset(is_val=True)}
-dataloaders = {
-    x: DataLoader(datasets[x], batch_size=batch_size, shuffle=False)
-    for x in ['train', 'val']
-}
-dataset_sizes = {x: len(datasets[x]) for x in ['train', 'val']}
+    datasets = {'train': FingerDataset(), 'val': FingerDataset(is_val=True)}
+    dataloaders = {
+        x: DataLoader(datasets[x], batch_size=batch_size, shuffle=False)
+        for x in ['train', 'val']
+    }
+    dataset_sizes = {x: len(datasets[x]) for x in ['train', 'val']}
 
-#%%
-optimizer_ft = optim.SGD(model.parameters(), lr=0.001, momentum=0.9)
-criterion = nn.CrossEntropyLoss()
-model = train_model(model,
-                    dataloaders,
-                    dataset_sizes,
-                    criterion,
-                    optimizer_ft,
-                    num_epochs=50)
-torch.save(model.state_dict(), "finger.pt")
-
-# %%
+    optimizer_ft = optim.SGD(model.parameters(), lr=0.001, momentum=0.9)
+    criterion = nn.CrossEntropyLoss()
+    model = train_model(model,
+                        dataloaders,
+                        dataset_sizes,
+                        criterion,
+                        optimizer_ft,
+                        num_epochs=50)
+    torch.save(model.state_dict(), "finger.pt")

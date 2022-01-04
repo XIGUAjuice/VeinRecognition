@@ -24,7 +24,7 @@ class PalmDataset(Dataset):
         for dir in dirs:
             png_paths = glob.glob("{}/*".format(dir))
             if is_val:
-                self.paths.append(png_paths[0:2])
+                self.paths.extend(png_paths[0:2])
             else:
                 self.paths.extend(png_paths[2:])
 
@@ -57,23 +57,24 @@ class PalmDataset(Dataset):
         return img_tensor, label
 
 
-batch_size = 20
-model = models.vgg19(pretrained=False)
-model.classifier[6] = nn.Linear(in_features=4096, out_features=4)
+if __name__ == '__main__':
+    batch_size = 20
+    model = models.vgg19(pretrained=False)
+    model.classifier[6] = nn.Linear(in_features=4096, out_features=4)
 
-datasets = {'train': PalmDataset(), 'val': PalmDataset(is_val=True)}
-dataloaders = {
-    x: DataLoader(datasets[x], batch_size=batch_size, shuffle=False)
-    for x in ['train', 'val']
-}
-dataset_sizes = {x: len(datasets[x]) for x in ['train', 'val']}
-#%%
-optimizer_ft = optim.SGD(model.parameters(), lr=0.001, momentum=0.9)
-criterion = nn.CrossEntropyLoss()
-model = train_model(model,
-                    dataloaders,
-                    dataset_sizes,
-                    criterion,
-                    optimizer_ft,
-                    num_epochs=50)
-torch.save(model.state_dict(), "palm.pt")
+    datasets = {'train': PalmDataset(), 'val': PalmDataset(is_val=True)}
+    dataloaders = {
+        x: DataLoader(datasets[x], batch_size=batch_size, shuffle=False)
+        for x in ['train', 'val']
+    }
+    dataset_sizes = {x: len(datasets[x]) for x in ['train', 'val']}
+    #%%
+    optimizer_ft = optim.SGD(model.parameters(), lr=0.001, momentum=0.9)
+    criterion = nn.CrossEntropyLoss()
+    model = train_model(model,
+                        dataloaders,
+                        dataset_sizes,
+                        criterion,
+                        optimizer_ft,
+                        num_epochs=50)
+    torch.save(model.state_dict(), "palm.pt")

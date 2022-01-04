@@ -98,14 +98,17 @@ def train_model(model,
     return model
 
 
-def visulize(model, dataloaders):
+def visulize(model, dataloaders, dataset):
     was_training = model.training
     model.eval()
     # device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     device = "cpu"
 
     with torch.no_grad():
-        fig, axs = plt.subplots(3, 4, figsize=(30, 20))
+        if dataset == "finger":
+            fig, axs = plt.subplots(3, 4, figsize=(15, 9))
+        else:
+            fig, axs = plt.subplots(2, 4, figsize=(15, 9))
         plot_id = 0
 
         for _, (inputs, labels) in enumerate(dataloaders['val']):
@@ -123,14 +126,23 @@ def visulize(model, dataloaders):
                 ax = axs[row][column]
 
                 ax.set_title(label)
-                x = np.arange(0, 10)
+                if dataset == "finger":
+                    x = np.arange(0, 10)
+                else:
+                    x = np.arange(0, 4)
                 ax.plot(x, output)
                 plot_id += 1
 
-        plt.setp(axs, xticks=np.arange(0, 10), yticks=np.arange(0, 1, 0.1))
-        axs[2, 2].remove()
-        axs[2, 3].remove()
+        if dataset == "finger":
+            plt.setp(axs, xticks=np.arange(0, 10), yticks=np.arange(0, 1, 0.1))
+        else:
+            plt.setp(axs, xticks=np.arange(0, 4), yticks=np.arange(0, 1, 0.1))
+
+        if dataset == "finger":
+            axs[2, 2].remove()
+            axs[2, 3].remove()
         model.train(mode=was_training)
+        plt.show()
 
 
 class FingerROIExtracter:
@@ -335,11 +347,11 @@ class PalmROIExtracter:
         axs[0, 2].set_title("(c) 最大内切圆", y=0, pad=-20, fontsize=20)
 
         axs[1, 0].plot(np.arange(intersects.shape[0]), intersects)
-        axs[1, 0].set_title("(c) 定位中指", y=0, pad=-20, fontsize=20)
+        axs[1, 0].set_title("(d) 定位中指", y=0, pad=-20, fontsize=20)
 
         result = rotate_image(result, center, rotate)
         axs[1, 1].imshow(result)
-        axs[1, 1].set_title("(d) 旋转校正", y=0, pad=-20, fontsize=20)
+        axs[1, 1].set_title("(e) 旋转校正", y=0, pad=-20, fontsize=20)
 
         left, upper, right, lower = self.getSquareInside(center, radius)
         cv2.rectangle(result, (left, upper), (right, lower), (0, 128, 0), 6)
@@ -348,7 +360,7 @@ class PalmROIExtracter:
                                                          scale=0.8)
         cv2.rectangle(result, (left, upper), (right, lower), (255, 0, 0), 6)
         axs[1, 2].imshow(result)
-        axs[1, 2].set_title("(e) ROI截取", y=0, pad=-20, fontsize=20)
+        axs[1, 2].set_title("(f) ROI截取", y=0, pad=-20, fontsize=20)
 
         plt.show()
 
