@@ -142,6 +142,8 @@ def visulize(model, dataloaders, dataset):
             axs[2, 2].remove()
             axs[2, 3].remove()
         model.train(mode=was_training)
+
+        plt.savefig("pics/{}_classify.png".format(dataset))
         plt.show()
 
 
@@ -228,6 +230,7 @@ class FingerROIExtracter:
         axs[1, 2].imshow(result)
         axs[1, 2].set_title("(f) ROI提取", y=0, pad=-20, fontsize=20)
 
+        plt.savefig("pics/Finger_roi.png")
         plt.show()
 
     def __call__(self, img):
@@ -362,6 +365,7 @@ class PalmROIExtracter:
         axs[1, 2].imshow(result)
         axs[1, 2].set_title("(f) ROI截取", y=0, pad=-20, fontsize=20)
 
+        plt.savefig("pics/Palm_roi.png")
         plt.show()
 
 
