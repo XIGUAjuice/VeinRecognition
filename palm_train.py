@@ -24,9 +24,9 @@ class PalmDataset(Dataset):
         for dir in dirs:
             png_paths = glob.glob("{}/*".format(dir))
             if is_val:
-                self.paths.append(png_paths[0])
+                self.paths.append(png_paths[0:2])
             else:
-                self.paths.extend(png_paths[1:])
+                self.paths.extend(png_paths[2:])
 
     def __len__(self) -> int:
         return len(self.paths)
