@@ -76,5 +76,5 @@ if __name__ == '__main__':
                         dataset_sizes,
                         criterion,
                         optimizer_ft,
-                        num_epochs=50)
+                        num_epochs=100)
     torch.save(model.state_dict(), "palm.pt")
